@@ -984,9 +984,7 @@ set_object_acl(BucketName, Key, ACL, Config)
 
 sign_method_mime_url(Method, Mime, Expire_time, BucketName, Key, Config)
   when is_list(Method), is_list(Mime), is_integer(Expire_time), is_list(BucketName), is_list(Key) ->
-    {Mega, Sec, _Micro} = os:timestamp(),
-    Datetime = (Mega * 1000000) + Sec,
-    Expires = integer_to_list(Expire_time + Datetime),
+    Expires = integer_to_list(Expire_time),
     SecurityTokenToSign = case Config#aws_config.security_token of
         undefined -> "";
         SecurityToken -> "x-amz-security-token:" ++ SecurityToken ++ "\n"
@@ -997,8 +995,11 @@ sign_method_mime_url(Method, Mime, Expire_time, BucketName, Key, Config)
 
 -spec sign_get(integer(), string(), string(), aws_config()) -> {binary(), string()}.
 
-sign_get(Expire_time, BucketName, Key, Config) ->
-    sign_method_mime_url("GET", "", Expire_time, BucketName, Key, Config).
+sign_get(ExpiresInseconds, BucketName, Key, Config) ->
+    {Mega, Sec, _Micro} = os:timestamp(),
+    Datetime = (Mega * 1000000) + Sec,
+    Expiration_time = Datetime + ExpiresInseconds,
+    sign_method_mime_url("GET", "", Expiration_time, BucketName, Key, Config).
 
 -spec make_link(integer(), string(), string()) -> {integer(), string(), string()}.
 
