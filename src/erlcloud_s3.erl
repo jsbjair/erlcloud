@@ -30,6 +30,7 @@
          set_object_acl/3, set_object_acl/4,
          make_link/3, make_link/4,
          make_get_url/3, make_get_url/4,
+         make_upload_url/5,
          start_multipart/2, start_multipart/5,
          upload_part/5, upload_part/7,
          complete_multipart/4, complete_multipart/6,
@@ -979,19 +980,26 @@ set_object_acl(BucketName, Key, ACL, Config)
     XMLText = list_to_binary(xmerl:export_simple([XML], xmerl_xml, [{prolog, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"}])),
     s3_simple_request(Config, put, BucketName, [$/|Key], "acl", [], XMLText, [{"content-type", "application/xml"}]).
 
--spec sign_get(integer(), string(), string(), aws_config()) -> {binary(), string()}.
-sign_get(Expire_time, BucketName, Key, Config)
-  when is_integer(Expire_time), is_list(BucketName), is_list(Key) ->
-    {Mega, Sec, _Micro} = os:timestamp(),
-    Datetime = (Mega * 1000000) + Sec,
-    Expires = integer_to_list(Expire_time + Datetime),
+-spec sign_method_mime_url(string(), string(), integer(), string(), string(), aws_config()) -> {binary(), string()}.
+
+sign_method_mime_url(Method, Mime, Expire_time, BucketName, Key, Config)
+  when is_list(Method), is_list(Mime), is_integer(Expire_time), is_list(BucketName), is_list(Key) ->
+    Expires = integer_to_list(Expire_time),
     SecurityTokenToSign = case Config#aws_config.security_token of
         undefined -> "";
         SecurityToken -> "x-amz-security-token:" ++ SecurityToken ++ "\n"
     end,
-    To_sign = lists:flatten(["GET\n\n\n", Expires, "\n", SecurityTokenToSign, "/", BucketName, "/", Key]),
+    To_sign = lists:flatten([Method, "\n\n", Mime, "\n", Expires, "\n", SecurityTokenToSign, "/", BucketName, "/", Key]),
     Sig = base64:encode(erlcloud_util:sha_mac(Config#aws_config.secret_access_key, To_sign)),
     {Sig, Expires}.
+
+-spec sign_get(integer(), string(), string(), aws_config()) -> {binary(), string()}.
+
+sign_get(ExpiresInseconds, BucketName, Key, Config) ->
+    {Mega, Sec, _Micro} = os:timestamp(),
+    Datetime = (Mega * 1000000) + Sec,
+    Expiration_time = Datetime + ExpiresInseconds,
+    sign_method_mime_url("GET", "", Expiration_time, BucketName, Key, Config).
 
 -spec make_link(integer(), string(), string()) -> {integer(), string(), string()}.
 
@@ -1026,15 +1034,9 @@ make_link(Expire_time, BucketName, Key, Config) ->
       true  -> lists:flatten([Config#aws_config.s3_scheme, Config#aws_config.s3_host, port_spec(Config), "/", BucketName, "/", Key])
   end.
 
--spec make_get_url(integer(), string(), string()) -> iolist().
+-spec make_url(integer(), string(), string(), string(), aws_config()) -> iolist().
 
-make_get_url(Expire_time, BucketName, Key) ->
-    make_get_url(Expire_time, BucketName, Key, default_config()).
-
--spec make_get_url(integer(), string(), string(), aws_config()) -> iolist().
-
-make_get_url(Expire_time, BucketName, Key, Config) ->
-    {Sig, Expires} = sign_get(Expire_time, BucketName, erlcloud_http:url_encode_loose(Key), Config),
+make_url(Expires, Sig, BucketName, Key, Config) ->
     SecurityTokenQS = case Config#aws_config.security_token of
         undefined -> "";
         SecurityToken -> "&x-amz-security-token=" ++ erlcloud_http:url_encode(SecurityToken)
@@ -1044,6 +1046,23 @@ make_get_url(Expire_time, BucketName, Key, Config) ->
      "&Signature=", erlcloud_http:url_encode(Sig),
      "&Expires=", Expires,
      SecurityTokenQS]).
+
+-spec make_get_url(integer(), string(), string()) -> iolist().
+
+make_get_url(Expire_time, BucketName, Key) ->
+    make_get_url(Expire_time, BucketName, Key, default_config()).
+
+-spec make_get_url(integer(), string(), string(), aws_config()) -> iolist().
+
+make_get_url(Expire_time, BucketName, Key, Config) ->
+    {Sig, Expires} = sign_get(Expire_time, BucketName, erlcloud_http:url_encode_loose(Key), Config),
+    make_url(Expires, Sig, BucketName, Key, Config).
+
+-spec make_upload_url(integer(), string(), string(), string(), aws_config()) -> iolist().
+
+make_upload_url(Expire_time, MimeType, BucketName, Key, Config) ->
+    {Sig, Expires} = sign_method_mime_url("PUT", MimeType, Expire_time, BucketName, erlcloud_http:url_encode_loose(Key), Config),
+    make_url(Expires, Sig, BucketName, Key, Config).
 
 -spec start_multipart(string(), string()) -> {ok, proplist()} | {error, any()}.
 start_multipart(BucketName, Key)
