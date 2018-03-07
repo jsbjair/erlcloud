@@ -184,6 +184,7 @@ copy_object(DestBucketName, DestKeyName, SrcBucketName, SrcKeyName, Options, Con
          {"x-amz-copy-source-if-none-match", proplists:get_value(if_none_match, Options)},
          {"x-amz-copy-source-if-unmodified-since", proplists:get_value(if_unmodified_since, Options)},
          {"x-amz-copy-source-if-modified-since", proplists:get_value(if_modified_since, Options)},
+         {"content-type", proplists:get_value(content_type, Options)},
          {"x-amz-acl", encode_acl(proplists:get_value(acl, Options))}],
     {Headers, _Body} = s3_request(Config, put, DestBucketName, [$/|DestKeyName],
                                   "", [], <<>>, RequestHeaders),
