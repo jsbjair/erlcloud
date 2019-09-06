@@ -30,6 +30,7 @@
          set_object_acl/3, set_object_acl/4,
          make_link/3, make_link/4,
          make_get_url/3, make_get_url/4,
+         make_download_url/5,
          make_upload_url/5,
          start_multipart/2, start_multipart/5,
          upload_part/5, upload_part/7,
@@ -184,6 +185,7 @@ copy_object(DestBucketName, DestKeyName, SrcBucketName, SrcKeyName, Options, Con
          {"x-amz-copy-source-if-none-match", proplists:get_value(if_none_match, Options)},
          {"x-amz-copy-source-if-unmodified-since", proplists:get_value(if_unmodified_since, Options)},
          {"x-amz-copy-source-if-modified-since", proplists:get_value(if_modified_since, Options)},
+         {"content-type", proplists:get_value(content_type, Options)},
          {"x-amz-acl", encode_acl(proplists:get_value(acl, Options))}],
     {Headers, _Body} = s3_request(Config, put, DestBucketName, [$/|DestKeyName],
                                   "", [], <<>>, RequestHeaders),
@@ -984,9 +986,7 @@ set_object_acl(BucketName, Key, ACL, Config)
 
 sign_method_mime_url(Method, Mime, Expire_time, BucketName, Key, Config)
   when is_list(Method), is_list(Mime), is_integer(Expire_time), is_list(BucketName), is_list(Key) ->
-    {Mega, Sec, _Micro} = os:timestamp(),
-    Datetime = (Mega * 1000000) + Sec,
-    Expires = integer_to_list(Expire_time + Datetime),
+    Expires = integer_to_list(Expire_time),
     SecurityTokenToSign = case Config#aws_config.security_token of
         undefined -> "";
         SecurityToken -> "x-amz-security-token:" ++ SecurityToken ++ "\n"
@@ -997,8 +997,11 @@ sign_method_mime_url(Method, Mime, Expire_time, BucketName, Key, Config)
 
 -spec sign_get(integer(), string(), string(), aws_config()) -> {binary(), string()}.
 
-sign_get(Expire_time, BucketName, Key, Config) ->
-    sign_method_mime_url("GET", "", Expire_time, BucketName, Key, Config).
+sign_get(ExpiresInseconds, BucketName, Key, Config) ->
+    {Mega, Sec, _Micro} = os:timestamp(),
+    Datetime = (Mega * 1000000) + Sec,
+    Expiration_time = Datetime + ExpiresInseconds,
+    sign_method_mime_url("GET", "", Expiration_time, BucketName, Key, Config).
 
 -spec make_link(integer(), string(), string()) -> {integer(), string(), string()}.
 
@@ -1061,6 +1064,12 @@ make_get_url(Expire_time, BucketName, Key, Config) ->
 
 make_upload_url(Expire_time, MimeType, BucketName, Key, Config) ->
     {Sig, Expires} = sign_method_mime_url("PUT", MimeType, Expire_time, BucketName, erlcloud_http:url_encode_loose(Key), Config),
+    make_url(Expires, Sig, BucketName, Key, Config).
+
+-spec make_download_url(integer(), string(), string(), string(), aws_config()) -> iolist().
+
+make_download_url(Expire_time, MimeType, BucketName, Key, Config) ->
+    {Sig, Expires} = sign_method_mime_url("GET", "", Expire_time, BucketName, erlcloud_http:url_encode_loose(Key), Config),
     make_url(Expires, Sig, BucketName, Key, Config).
 
 -spec start_multipart(string(), string()) -> {ok, proplist()} | {error, any()}.
