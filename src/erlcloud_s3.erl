@@ -2,7 +2,7 @@
 
 -module(erlcloud_s3).
 
--export([new/2, new/3, new/4,
+-export([new/2, new/3, new/4, new/5,
          configure/2, configure/3, configure/4, configure/5,
          create_bucket/1, create_bucket/2, create_bucket/3, create_bucket/4,
          check_bucket_access/1, check_bucket_access/2,
